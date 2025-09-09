@@ -479,9 +479,7 @@ def main():
     )
     parser.add_argument(
         "--create",
-        type=str,
-        nargs="?",
-        const="create",
+        action="store_true",
         help="Create scanning scripts in script directory if not exists",
     )
     parser.add_argument(
